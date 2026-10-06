@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
-import { Search, Filter, Image as ImageIcon, Lock, LayoutTemplate, UploadCloud, Loader2 } from 'lucide-react';
+import { Search, Filter, Image as ImageIcon, Lock, LayoutTemplate, UploadCloud, Loader2, X, ChevronLeft, ChevronRight } from 'lucide-react';
 
 function Admin() {
   const [categorias, setCategorias] = useState([]);
@@ -17,18 +17,24 @@ function Admin() {
   const [descripcionProd, setDescripcionProd] = useState("");
   const [precioProd, setPrecioProd] = useState("");
   const [stockProd, setStockProd] = useState("");
-  const [imagenProd, setImagenProd] = useState(""); 
+  
+  const [imagenesActuales, setImagenesActuales] = useState([]); 
+  
   const [subcatSeleccionada, setSubcatSeleccionada] = useState("");
   const [editandoProductoId, setEditandoProductoId] = useState(null);
 
   const [archivosImagenes, setArchivosImagenes] = useState([]);
   const [subiendo, setSubiendo] = useState(false);
 
+  // ESTADOS PARA DRAG & DROP
+  const [isDragging, setIsDragging] = useState(false);
+
   const [costoProd, setCostoProd] = useState("");
   const [proveedorProd, setProveedorProd] = useState("");
   const [notasProd, setNotasProd] = useState("");
   const [porEncargue, setPorEncargue] = useState(false);
   const [subcategoriasExtra, setSubcategoriasExtra] = useState([]);
+  
   const agregarSubcatExtra = () => setSubcategoriasExtra([...subcategoriasExtra, ""]);
   const quitarSubcatExtra = (index) => setSubcategoriasExtra(subcategoriasExtra.filter((_, i) => i !== index));
   const actualizarSubcatExtra = (index, valor) => {
@@ -52,7 +58,6 @@ function Admin() {
   }, []);
 
   const obtenerColecciones = async () => {
-    // ACÁ ESTABA EL ERROR: Agregamos order('id')
     const { data, error } = await supabase.from('colecciones').select('*').order('id', { ascending: true });
     if (!error) setColecciones(data || []);
   };
@@ -80,7 +85,6 @@ function Admin() {
   };
 
   const obtenerCategorias = async () => {
-    // ACÁ ESTABA EL ERROR: Agregamos order('id')
     const { data } = await supabase.from('categorias').select('*').order('id');
     if (data) { setCategorias(data); if (data.length > 0 && !categoriaSeleccionada) setCategoriaSeleccionada(data[0].id); }
   };
@@ -103,7 +107,6 @@ function Admin() {
   };
 
   const obtenerSubcategorias = async () => {
-    // ACÁ ESTABA EL ERROR: Agregamos order('id')
     const { data } = await supabase.from('subcategorias').select('*').order('id');
     if (data) { setSubcategorias(data); if (data.length > 0 && !subcatSeleccionada) setSubcatSeleccionada(data[0].id); }
   };
@@ -123,16 +126,16 @@ function Admin() {
   };
 
   const obtenerProductos = async () => {
-    // ACÁ ESTABA EL ERROR: Agregamos order('id')
     const { data } = await supabase.from('productos').select('*').order('id');
     if (data) setProductos(data);
   };
 
   const limpiarFormularioProd = () => {
     setNombreProd(""); setDescripcionProd(""); setPrecioProd(""); setStockProd("");
-    setImagenProd(""); setCostoProd(""); setProveedorProd(""); setNotasProd("");
+    setCostoProd(""); setProveedorProd(""); setNotasProd("");
     setPorEncargue(false); 
     setArchivosImagenes([]); 
+    setImagenesActuales([]);
     setEditandoProductoId(null);
     setSubcategoriasExtra([]);
   };
@@ -143,24 +146,87 @@ function Admin() {
     setProveedorProd(prod.proveedor || ""); setNotasProd(prod.notas_internas || "");
     setPorEncargue(prod.por_encargue || false);
 
-    let imgParaMostrar = prod.imagen_url || "";
-    if (Array.isArray(prod.imagen_url)) {
-      imgParaMostrar = prod.imagen_url.length === 1 ? prod.imagen_url[0] : JSON.stringify(prod.imagen_url);
+    let imgsParsed = [];
+    if (prod.imagen_url) {
+      if (Array.isArray(prod.imagen_url)) {
+        imgsParsed = [...prod.imagen_url];
+      } else if (typeof prod.imagen_url === 'string') {
+        try {
+          const parsed = JSON.parse(prod.imagen_url);
+          imgsParsed = Array.isArray(parsed) ? parsed : [prod.imagen_url];
+        } catch (e) {
+          imgsParsed = [prod.imagen_url];
+        }
+      }
     }
-    setImagenProd(imgParaMostrar);
+    setImagenesActuales(imgsParsed);
     setSubcatSeleccionada(prod.subcategoria_id);
     setArchivosImagenes([]); 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
     setSubcategoriasExtra(prod.subcategorias_extra || []);
+    
+    setTimeout(() => {
+      document.getElementById('formulario-producto')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  };
+
+  // Mover fotos Viejas
+  const moverImagen = (index, direccion) => {
+    const nuevas = [...imagenesActuales];
+    if (direccion === -1 && index > 0) {
+      [nuevas[index], nuevas[index - 1]] = [nuevas[index - 1], nuevas[index]];
+    } else if (direccion === 1 && index < nuevas.length - 1) {
+      [nuevas[index], nuevas[index + 1]] = [nuevas[index + 1], nuevas[index]];
+    }
+    setImagenesActuales(nuevas);
+  };
+
+  const eliminarImagenActual = (index) => {
+    if (window.confirm("¿Quitar esta foto del producto?")) {
+      setImagenesActuales(imagenesActuales.filter((_, i) => i !== index));
+    }
+  };
+
+  // Mover fotos Nuevas
+  const moverImagenNueva = (index, direccion) => {
+    const nuevas = [...archivosImagenes];
+    if (direccion === -1 && index > 0) {
+      [nuevas[index], nuevas[index - 1]] = [nuevas[index - 1], nuevas[index]];
+    } else if (direccion === 1 && index < nuevas.length - 1) {
+      [nuevas[index], nuevas[index + 1]] = [nuevas[index + 1], nuevas[index]];
+    }
+    setArchivosImagenes(nuevas);
+  };
+
+  // FUNCIONES PARA DRAG & DROP
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    if (!subiendo) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (subiendo) return;
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const archivosValidos = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
+      if (archivosValidos.length > 0) {
+        setArchivosImagenes(prev => [...prev, ...archivosValidos]);
+      }
+    }
   };
 
   const guardarProducto = async (e) => {
     e.preventDefault();
     
-    // MEJORÉ LA ALERTA PARA QUE TE DIGA EXACTAMENTE QUÉ CAMPO FALLÓ
     if (!nombreProd || String(nombreProd).trim() === "") { alert("Error: Te falta escribir el Nombre del Producto."); return; }
     if (!precioProd || String(precioProd).trim() === "") { alert("Error: Te falta ponerle el Precio de venta."); return; }
-    if (!subcatSeleccionada || String(subcatSeleccionada).trim() === "") { alert("Error: Te falta seleccionar la Subcategoría. (Asegurate de que las categorías hayan cargado)."); return; }
+    if (!subcatSeleccionada || String(subcatSeleccionada).trim() === "") { alert("Error: Te falta seleccionar la Subcategoría."); return; }
 
     setSubiendo(true); 
     
@@ -185,18 +251,7 @@ function Admin() {
         }
       }
 
-      let urlsViejasManuales = [];
-      let manual = imagenProd.trim();
-      if (manual !== "") {
-        if (manual.startsWith('[') && manual.endsWith(']')) {
-          try { urlsViejasManuales = JSON.parse(manual); } 
-          catch (error) { alert("El formato del texto de la imagen vieja es inválido."); setSubiendo(false); return; }
-        } else {
-          urlsViejasManuales = [manual];
-        }
-      }
-
-      const todasLasFotos = [...urlsNuevas, ...urlsViejasManuales];
+      const todasLasFotos = [...imagenesActuales, ...urlsNuevas];
       const imagenFinal = todasLasFotos.length === 0 ? null : todasLasFotos;
 
       const datosProducto = {
@@ -204,7 +259,7 @@ function Admin() {
         imagen_url: imagenFinal, subcategoria_id: subcatSeleccionada, costo: parseFloat(costoProd) || null,
         proveedor: proveedorProd.trim() || null, notas_internas: notasProd.trim() || null,
         por_encargue: porEncargue,
-        subcategorias_extra: subcategoriasExtra.filter(s => s !== "") // Se guarda la lista limpia sin vacíos
+        subcategorias_extra: subcategoriasExtra.filter(s => s !== "") 
       };
 
       let dbError;
@@ -238,6 +293,21 @@ function Admin() {
     }
   };
 
+  const toggleDestacado = async (id, estadoActual) => {
+    const { error } = await supabase
+      .from('productos')
+      .update({ destacado: !estadoActual })
+      .eq('id', id);
+
+    if (error) {
+      alert("Hubo un error al actualizar el estado del producto.");
+    } else {
+      setProductos(productos.map(p => 
+        p.id === id ? { ...p, destacado: !estadoActual } : p
+      ));
+    }
+  };
+
   const obtenerNombreSubcat = (subId) => {
     const sub = subcategorias.find(s => s.id === subId); return sub ? sub.nombre : 'Sin subcategoría';
   };
@@ -267,6 +337,7 @@ function Admin() {
     <div className="p-4 sm:p-8 bg-gray-50 min-h-screen font-sans">
       <h1 className="text-3xl font-black mb-6 text-gray-800 tracking-tight">Panel de Control <span className="text-blue-600">El Manguruyu</span></h1>
       
+      {/* 1. SECCIÓN CATEGORÍAS */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-8">
         <div className={`bg-white p-6 rounded-2xl shadow-sm border ${editandoCategoriaId ? 'border-yellow-400' : 'border-gray-100'}`}>
           <h2 className="text-xl font-bold mb-4 text-gray-700">Gestión de Categorías</h2>
@@ -333,9 +404,10 @@ function Admin() {
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8">
+      {/* 2. FORMULARIO DE PRODUCTO */}
+      <div id="formulario-producto" className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8 scroll-mt-6">
         <h2 className="text-xl font-bold mb-4 text-gray-700 flex items-center gap-2">Agregar o Editar Producto</h2>
-        <form onSubmit={guardarProducto} className={`mb-10 p-5 rounded-2xl border ${editandoProductoId ? 'bg-yellow-50/30 border-yellow-300' : 'bg-gray-50 border-gray-200'}`}>
+        <form onSubmit={guardarProducto} className={`p-5 rounded-2xl border ${editandoProductoId ? 'bg-yellow-50/30 border-yellow-300 shadow-md' : 'bg-gray-50 border-gray-200'}`}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Subcategoría Principal:</label>
@@ -352,7 +424,6 @@ function Admin() {
                 })}
               </select>
 
-              {/* MAGIA: Acá aparecen los selectores extra si el usuario los pide */}
               {subcategoriasExtra.map((subExt, index) => (
                 <div key={index} className="flex gap-2 mt-2">
                   <select value={subExt} onChange={(e) => actualizarSubcatExtra(index, e.target.value)} disabled={subiendo} className="border border-indigo-200 bg-indigo-50/30 p-2 rounded-xl w-full text-sm cursor-pointer focus:ring-2 focus:ring-indigo-500/50 outline-none disabled:opacity-50">
@@ -372,7 +443,7 @@ function Admin() {
               ))}
               
               <button type="button" onClick={agregarSubcatExtra} disabled={subiendo} className="mt-2 text-[11px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wide cursor-pointer text-left">
-                + Agregar a otra categoría (Opcional)
+                + Agregar a otra categoría
               </button>
             </div>
             <div>
@@ -384,23 +455,106 @@ function Admin() {
               <input type="number" value={stockProd} onChange={(e) => setStockProd(e.target.value)} disabled={subiendo} className="border border-gray-200 p-2.5 rounded-xl w-full text-sm focus:ring-2 focus:ring-blue-500/50 outline-none disabled:opacity-50" />
             </div>
             
-            <div className="md:col-span-2 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+            {/* GESTOR VISUAL DE IMÁGENES VIEJAS */}
+            {imagenesActuales.length > 0 && (
+              <div className="md:col-span-3 bg-white p-4 rounded-xl border border-gray-200">
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-3">Fotos actuales (Ordená o eliminá):</label>
+                <div className="flex gap-4 overflow-x-auto pb-2">
+                  {imagenesActuales.map((url, i) => (
+                    <div key={i} className="relative w-28 h-28 shrink-0 rounded-xl overflow-hidden border border-gray-200 group bg-gray-50 shadow-sm">
+                      <img src={url} alt={`foto-${i}`} className="w-full h-full object-cover mix-blend-multiply" />
+                      
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
+                        <button type="button" onClick={() => eliminarImagenActual(i)} className="self-end bg-red-500 hover:bg-red-600 text-white rounded-full p-1 shadow-sm transition-colors cursor-pointer" title="Borrar foto">
+                          <X className="w-3.5 h-3.5"/>
+                        </button>
+                        
+                        <div className="flex justify-between mt-auto">
+                          <button type="button" onClick={() => moverImagen(i, -1)} disabled={i === 0} className="bg-white/90 hover:bg-white p-1 rounded-md disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-sm transition-colors" title="Mover a la izquierda (Principal)">
+                            <ChevronLeft className="w-4 h-4 text-gray-800"/>
+                          </button>
+                          {i === 0 && <span className="text-[9px] font-black text-white bg-blue-600 px-1.5 rounded self-center">PORTADA</span>}
+                          <button type="button" onClick={() => moverImagen(i, 1)} disabled={i === imagenesActuales.length - 1} className="bg-white/90 hover:bg-white p-1 rounded-md disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-sm transition-colors" title="Mover a la derecha">
+                            <ChevronRight className="w-4 h-4 text-gray-800"/>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ZONA DRAG & DROP Y GESTOR VISUAL DE FOTOS NUEVAS */}
+            <div className="md:col-span-2">
               <label className="block text-xs font-bold text-blue-700 uppercase tracking-wide mb-2 flex items-center gap-2">
                 <UploadCloud className="w-4 h-4"/> 
-                Subir Fotos (Podés elegir varias a la vez)
+                Subir Fotos {imagenesActuales.length > 0 ? "Nuevas" : ""}
               </label>
-              <input 
-                type="file" 
-                multiple 
-                accept="image/*"
-                disabled={subiendo}
-                onChange={(e) => setArchivosImagenes(Array.from(e.target.files))} 
-                className="block w-full text-sm text-gray-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer focus:outline-none disabled:opacity-50"
-              />
+              
+              <label
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`flex flex-col items-center justify-center w-full h-32 px-4 transition-all duration-300 border-2 border-dashed rounded-xl cursor-pointer ${
+                  isDragging
+                    ? 'border-blue-500 bg-blue-100 shadow-inner'
+                    : 'border-blue-200 bg-blue-50/50 hover:bg-blue-50 hover:border-blue-400'
+                } ${subiendo ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className="flex flex-col items-center justify-center pt-5 pb-6 pointer-events-none">
+                  <UploadCloud className={`w-8 h-8 mb-2 transition-colors ${isDragging ? 'text-blue-600' : 'text-blue-400'}`} />
+                  <p className="mb-1 text-sm font-bold text-blue-700 text-center">
+                    {isDragging ? '¡Soltá las fotos acá!' : 'Arrastrá tus fotos acá o hacé clic'}
+                  </p>
+                  <p className="text-xs text-gray-500">Admite JPG, PNG o WEBP</p>
+                </div>
+                <input 
+                  type="file" 
+                  multiple 
+                  accept="image/*"
+                  disabled={subiendo}
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      setArchivosImagenes(prev => [...prev, ...Array.from(e.target.files)]);
+                    }
+                  }} 
+                  className="hidden"
+                />
+              </label>
+
+              {/* GESTOR VISUAL DE IMÁGENES NUEVAS (Antes de subir) */}
               {archivosImagenes.length > 0 && (
-                <span className="text-sm text-emerald-600 font-bold mt-2 block flex items-center gap-1">
-                  ¡{archivosImagenes.length} foto(s) lista(s) para subir! 🚀
-                </span>
+                <div className="mt-4 p-4 bg-emerald-50/50 rounded-xl border border-emerald-100">
+                  <label className="block text-xs font-bold text-emerald-700 uppercase tracking-wide mb-3">Fotos listas para subir (Ordená o eliminá):</label>
+                  <div className="flex gap-4 overflow-x-auto pb-2">
+                    {archivosImagenes.map((file, i) => (
+                      <div key={`new-${i}`} className="relative w-28 h-28 shrink-0 rounded-xl overflow-hidden border border-emerald-200 group bg-white shadow-sm">
+                        <img src={URL.createObjectURL(file)} alt={`nueva-${i}`} className="w-full h-full object-cover" />
+                        
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
+                          <button type="button" onClick={(e) => {
+                              e.preventDefault();
+                              setArchivosImagenes(archivosImagenes.filter((_, index) => index !== i));
+                            }} 
+                            className="self-end bg-red-500 hover:bg-red-600 text-white rounded-full p-1 shadow-sm transition-colors cursor-pointer" title="Quitar foto">
+                            <X className="w-3.5 h-3.5"/>
+                          </button>
+                          
+                          <div className="flex justify-between mt-auto">
+                            <button type="button" onClick={(e) => { e.preventDefault(); moverImagenNueva(i, -1); }} disabled={i === 0} className="bg-white/90 hover:bg-white p-1 rounded-md disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-sm transition-colors" title="Mover a la izquierda">
+                              <ChevronLeft className="w-4 h-4 text-gray-800"/>
+                            </button>
+                            {(i === 0 && imagenesActuales.length === 0) && <span className="text-[9px] font-black text-white bg-blue-600 px-1.5 rounded self-center">PORTADA</span>}
+                            <button type="button" onClick={(e) => { e.preventDefault(); moverImagenNueva(i, 1); }} disabled={i === archivosImagenes.length - 1} className="bg-white/90 hover:bg-white p-1 rounded-md disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-sm transition-colors" title="Mover a la derecha">
+                              <ChevronRight className="w-4 h-4 text-gray-800"/>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
 
@@ -416,13 +570,6 @@ function Admin() {
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Descripción pública:</label>
               <input type="text" value={descripcionProd} onChange={(e) => setDescripcionProd(e.target.value)} disabled={subiendo} className="border border-gray-200 p-2.5 rounded-xl w-full text-sm focus:ring-2 focus:ring-blue-500/50 outline-none disabled:opacity-50" />
             </div>
-
-            {editandoProductoId && (
-               <div className="md:col-span-3 opacity-60 hover:opacity-100 transition-opacity">
-                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Links guardados previamente (podés editarlos a mano):</label>
-                 <input type="text" value={imagenProd} onChange={(e) => setImagenProd(e.target.value)} disabled={subiendo} className="border border-gray-200 p-2 rounded-lg w-full text-xs outline-none font-mono disabled:opacity-50" />
-               </div>
-            )}
           </div>
 
           <div className="mt-6 pt-5 border-t border-gray-200/60 bg-indigo-50/30 p-4 rounded-xl">
@@ -462,7 +609,7 @@ function Admin() {
           </div>
 
           <div className="mt-6 flex flex-col md:flex-row gap-4 justify-end">
-              {editandoProductoId && <button type="button" onClick={limpiarFormularioProd} disabled={subiendo} className="bg-gray-200 text-gray-700 px-6 py-2.5 rounded-xl font-bold hover:bg-gray-300 cursor-pointer transition w-full md:w-auto disabled:opacity-50">Cancelar Edición</button>}
+              {editandoProductoId && <button type="button" onClick={() => {limpiarFormularioProd();}} disabled={subiendo} className="bg-gray-200 text-gray-700 px-6 py-2.5 rounded-xl font-bold hover:bg-gray-300 cursor-pointer transition w-full md:w-auto disabled:opacity-50">Cancelar Edición</button>}
               <button 
                 type="submit" 
                 disabled={subiendo}
@@ -472,38 +619,39 @@ function Admin() {
               </button>
           </div>
         </form>
+      </div>
 
-        <div className="border-t border-gray-100 pt-8 mb-6">
-          <div className="flex flex-col md:flex-row justify-between items-end gap-4 mb-4">
-            <h2 className="text-xl font-bold text-gray-700">Mi Stock ({productosFiltrados.length})</h2>
-            <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-              <div className="relative group">
-                <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400 group-focus-within:text-blue-500" />
-                <input 
-                  type="text" placeholder="Buscar producto..." value={busquedaProducto} onChange={(e) => setBusquedaProducto(e.target.value)}
-                  className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 w-full sm:w-64"
-                />
-              </div>
-              <div className="relative">
-                <Filter className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-                <select 
-                  value={filtroSubcategoria} onChange={(e) => setFiltroSubcategoria(e.target.value)}
-                  className="pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 cursor-pointer appearance-none w-full sm:w-auto"
-                >
-                  <option value="">Todas las subcategorías</option>
-                  {categorias.map(cat => {
-                    const subsDeEstaCat = subcategorias.filter(sub => String(sub.categoria_id) === String(cat.id));
-                    if (subsDeEstaCat.length === 0) return null;
-                    return (
-                      <optgroup key={cat.id} label={cat.nombre}>
-                        {subsDeEstaCat.map(sub => (
-                          <option key={sub.id} value={sub.id}>{sub.nombre}</option>
-                        ))}
-                      </optgroup>
-                    );
-                  })}
-                </select>
-              </div>
+      {/* 3. SECCIÓN STOCK */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-end gap-4 mb-6">
+          <h2 className="text-xl font-bold text-gray-700">Mi Stock ({productosFiltrados.length})</h2>
+          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+            <div className="relative group">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400 group-focus-within:text-blue-500" />
+              <input 
+                type="text" placeholder="Buscar producto..." value={busquedaProducto} onChange={(e) => setBusquedaProducto(e.target.value)}
+                className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 w-full sm:w-64"
+              />
+            </div>
+            <div className="relative">
+              <Filter className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+              <select 
+                value={filtroSubcategoria} onChange={(e) => setFiltroSubcategoria(e.target.value)}
+                className="pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 cursor-pointer appearance-none w-full sm:w-auto"
+              >
+                <option value="">Todas las subcategorías</option>
+                {categorias.map(cat => {
+                  const subsDeEstaCat = subcategorias.filter(sub => String(sub.categoria_id) === String(cat.id));
+                  if (subsDeEstaCat.length === 0) return null;
+                  return (
+                    <optgroup key={cat.id} label={cat.nombre}>
+                      {subsDeEstaCat.map(sub => (
+                        <option key={sub.id} value={sub.id}>{sub.nombre}</option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
+              </select>
             </div>
           </div>
         </div>
@@ -564,7 +712,8 @@ function Admin() {
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+      {/* 4. BANNERS */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8">
         <h2 className="text-xl font-bold mb-4 text-gray-700 flex items-center gap-2">
           <LayoutTemplate className="w-6 h-6 text-indigo-500" />
           Banners de la Tienda (Colecciones Destacadas)
@@ -617,6 +766,33 @@ function Admin() {
         </div>
       </div>
 
+      {/* 5. GESTIÓN DE PRODUCTOS DESTACADOS */}
+      <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-gray-200">
+        <h2 className="text-xl sm:text-2xl font-black text-gray-800 mb-6 flex items-center gap-3">
+          <span className="bg-blue-100 text-blue-600 p-2 rounded-xl">★</span>
+          Gestionar Destacados
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {productos.map(prod => (
+            <div key={`admin-dest-${prod.id}`} className="flex items-center justify-between p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
+              <span className="text-sm font-medium text-gray-700 truncate pr-3" title={prod.nombre}>
+                {prod.nombre}
+              </span>
+              <button
+                onClick={() => toggleDestacado(prod.id, prod.destacado)}
+                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  prod.destacado 
+                    ? 'bg-blue-100 text-blue-700 border border-blue-200 hover:bg-blue-200 shadow-sm' 
+                    : 'bg-gray-100 text-gray-500 border border-transparent hover:bg-gray-200'
+                }`}
+              >
+                {prod.destacado ? '★ Activo' : 'Normal'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+      
     </div>
   );
 }

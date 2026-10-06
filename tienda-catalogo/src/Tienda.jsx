@@ -41,7 +41,55 @@ function Tienda() {
   
   const [indiceFotoActual, setIndiceFotoActual] = useState(0);
 
-  const numeroWhatsApp = "5493435461310"; 
+  // NUEVO: Lógica para el carrusel de imágenes desde la tarjeta principal
+  const [indicesCarrusel, setIndicesCarrusel] = useState({});
+  
+  const avanzarFotoCarrusel = (e, id, max) => {
+    e.stopPropagation(); // Evita que se abra el modal al tocar la flecha
+    setIndicesCarrusel(prev => ({ ...prev, [id]: prev[id] !== undefined ? (prev[id] === max - 1 ? 0 : prev[id] + 1) : 1 }));
+  };
+  
+  const retrocederFotoCarrusel = (e, id, max) => {
+    e.stopPropagation();
+    setIndicesCarrusel(prev => ({ ...prev, [id]: prev[id] !== undefined ? (prev[id] === 0 ? max - 1 : prev[id] - 1) : max - 1 }));
+  };
+
+  const [destacados, setDestacados] = useState([]);
+
+  // NUEVO: Lógica para Productos Destacados (Al azar o Elegidos)
+  useEffect(() => {
+    if (productos.length > 0) {
+      // Si a futuro creas una columna 'destacado' en Supabase, usa esos.
+      // Si no existe, mezcla el catálogo y elige 6 al azar.
+      const elegidos = productos.filter(p => p.destacado);
+      if (elegidos.length > 0) {
+        setDestacados(elegidos);
+      } else {
+        const mezclados = [...productos].sort(() => 0.5 - Math.random());
+        setDestacados(mezclados.slice(0, 6));
+      }
+    }
+  }, [productos]);
+
+  // NUEVO: Movimiento automático del carrusel de destacados
+  useEffect(() => {
+    if (destacados.length === 0) return;
+    const timer = setInterval(() => {
+      const carrusel = document.getElementById('carrusel-destacados');
+      if (carrusel) {
+        const anchoTarjeta = carrusel.firstChild ? carrusel.firstChild.offsetWidth + 16 : 300;
+        // Si llegó al final, vuelve al principio, sino avanza
+        if (carrusel.scrollLeft + carrusel.clientWidth >= carrusel.scrollWidth - 10) {
+          carrusel.scrollTo({ left: 0, behavior: 'smooth' });
+        } else {
+          carrusel.scrollBy({ left: anchoTarjeta, behavior: 'smooth' });
+        }
+      }
+    }, 3500); // Cambia de producto cada 3 segundos y medio
+    return () => clearInterval(timer);
+  }, [destacados]);
+  
+  const numeroWhatsApp = "5493435300833"; 
 
   useEffect(() => {
     const cargarTodo = async () => {
@@ -269,6 +317,9 @@ function Tienda() {
             </div>
           </motion.div>
 
+          {/* ======================================================== */}
+          {/* 1. SECCIÓN COLECCIONES (Banners) - AHORA VAN ARRIBA */}
+          {/* ======================================================== */}
           {colecciones.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-16">
               {colecciones.map((col, index) => (
@@ -297,6 +348,67 @@ function Tienda() {
                   </div>
                 </motion.div>
               ))}
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* 2. SECCIÓN DESTACADOS (Sin estrella y debajo de banners) */}
+          {/* ======================================================== */}
+          {destacados.length > 0 && (
+            <div className="mb-12 sm:mb-16">
+              <div className="flex items-center mb-6 px-2">
+                <h3 className="text-xl sm:text-2xl font-black text-gray-800 tracking-tight">Destacados</h3>
+              </div>
+              
+              <div 
+                id="carrusel-destacados"
+                className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-6 pt-2 px-2"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              >
+                <style>{`#carrusel-destacados::-webkit-scrollbar { display: none; }`}</style>
+                
+                {destacados.map((prod) => {
+                  const listaFotos = obtenerListaImagenes(prod.imagen_url);
+                  return (
+                    <div 
+                      key={`dest-${prod.id}`}
+                      className="min-w-[260px] max-w-[260px] sm:min-w-[300px] sm:max-w-[300px] snap-center shrink-0 bg-white rounded-2xl sm:rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col border border-gray-100 group cursor-pointer"
+                      onClick={() => abrirModalProducto(prod)}
+                    >
+                      <div className="h-40 sm:h-48 bg-gray-50 relative p-4 flex items-center justify-center overflow-hidden">
+                        {listaFotos.length > 0 ? (
+                          <img src={listaFotos[0]} alt={prod.nombre} className="max-w-full max-h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-700 ease-out" />
+                        ) : (
+                          <CameraOff className="w-8 h-8 opacity-20" />
+                        )}
+                        
+                        <div className="absolute top-3 left-3 bg-blue-600 text-white text-[10px] sm:text-xs font-bold px-3 py-1 rounded-full shadow-sm z-10 tracking-widest uppercase">
+                          Destacado
+                        </div>
+                        {prod.stock <= 0 && !prod.por_encargue && <span className="absolute top-3 right-3 bg-red-500/90 backdrop-blur-sm text-white text-[10px] sm:text-xs font-bold px-3 py-1 rounded-full shadow-sm z-10">Sin Stock</span>}
+                      </div>
+
+                      <div className="p-4 flex-grow flex flex-col border-t border-gray-50">
+                        <span className="text-[10px] text-blue-500 font-bold uppercase tracking-widest mb-1 line-clamp-1">{obtenerNombreSubcategoria(prod.subcategoria_id)}</span>
+                        <h3 className="font-bold text-gray-800 text-[14px] sm:text-[16px] leading-tight mb-2 group-hover:text-blue-600 transition-colors line-clamp-2" title={prod.nombre}>
+                          {prod.nombre}
+                        </h3>
+                        
+                        <div className="flex justify-between items-end mt-auto pt-3">
+                          <span className="text-lg sm:text-xl font-black text-emerald-600">${prod.precio.toLocaleString('es-AR')}</span>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); agregarAlCarrito(prod); }}
+                            disabled={prod.stock <= 0 && !prod.por_encargue}
+                            className={`p-2.5 rounded-xl sm:rounded-2xl font-bold transition-all flex items-center justify-center ${prod.stock > 0 || prod.por_encargue ? 'bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                          >
+                            <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -399,6 +511,8 @@ function Tienda() {
             ) : (
               productosFiltrados.map((prod, index) => {
                 const listaFotos = obtenerListaImagenes(prod.imagen_url);
+                const idxFoto = indicesCarrusel[prod.id] || 0; // NUEVO: Averigua qué foto le toca mostrar a este producto
+                
                 return (
                 <motion.div 
                   initial={{ opacity: 0, y: 30 }}
@@ -408,18 +522,39 @@ function Tienda() {
                   className="bg-white rounded-2xl sm:rounded-3xl shadow-sm hover:shadow-xl sm:hover:-translate-y-2 transition-all duration-300 overflow-hidden flex flex-col border border-gray-100/50 group"
                 >
                   <div 
-                    className="h-36 sm:h-60 bg-gray-50 relative p-3 sm:p-6 flex items-center justify-center overflow-hidden cursor-pointer"
+                    className="h-36 sm:h-60 bg-gray-50 relative p-3 sm:p-6 flex items-center justify-center overflow-hidden cursor-pointer group/img"
                     onClick={() => abrirModalProducto(prod)}
                   >
                     {listaFotos.length > 0 ? (
-                      <img src={listaFotos[0]} alt={prod.nombre} className="max-w-full max-h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-700 ease-out" />
+                      <>
+                        <img src={listaFotos[idxFoto]} alt={prod.nombre} className="max-w-full max-h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-700 ease-out" />
+                        
+                        {/* MAGIA: Flechitas y puntitos (Discretas en celu, tamaño normal en PC) */}
+                        {listaFotos.length > 1 && (
+                          <>
+                            <div className="absolute inset-0 flex items-center justify-between px-0.5 sm:px-2 opacity-100 sm:opacity-0 sm:group-hover/img:opacity-100 transition-opacity duration-300">
+                              <button onClick={(e) => retrocederFotoCarrusel(e, prod.id, listaFotos.length)} className="bg-white/40 sm:bg-white/90 hover:bg-white/80 sm:hover:bg-white text-gray-800 p-0.5 sm:p-2 rounded-full shadow-sm sm:shadow-md backdrop-blur-sm transition-all active:scale-95 sm:hover:scale-110">
+                                <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                              </button>
+                              <button onClick={(e) => avanzarFotoCarrusel(e, prod.id, listaFotos.length)} className="bg-white/40 sm:bg-white/90 hover:bg-white/80 sm:hover:bg-white text-gray-800 p-0.5 sm:p-2 rounded-full shadow-sm sm:shadow-md backdrop-blur-sm transition-all active:scale-95 sm:hover:scale-110">
+                                <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
+                              </button>
+                            </div>
+                            <div className="absolute bottom-1 sm:bottom-2 left-0 right-0 flex justify-center gap-1 opacity-100 sm:opacity-0 sm:group-hover/img:opacity-100 transition-opacity duration-300">
+                              {listaFotos.map((_, i) => (
+                                <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === idxFoto ? 'bg-blue-600 w-2.5 sm:w-4' : 'bg-gray-300/90 w-1.5 sm:w-2'}`}></div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </>
                     ) : (
                       <div className="text-gray-400 text-xs sm:text-sm flex flex-col items-center gap-2">
                          <CameraOff className="w-6 h-6 sm:w-8 sm:h-8 opacity-50" />
                          Sin foto
                       </div>
                     )}
-                    {/* EXCEPCIÓN CARTEL ROJO: Solo se muestra si NO hay stock Y NO es por encargue */}
+                    
                     {prod.stock <= 0 && !prod.por_encargue && <span className="absolute top-2 right-2 sm:top-4 sm:right-4 bg-red-500/90 backdrop-blur-sm text-white text-[10px] sm:text-xs font-bold px-2 py-1 sm:px-3 sm:py-1.5 rounded-full shadow-sm z-10">Sin Stock</span>}
                   </div>
 
@@ -593,7 +728,7 @@ function Tienda() {
                 </button>
               </div>
 
-              <div className="flex-grow overflow-y-auto p-6 space-y-6 bg-gray-50/50">
+              <div className="flex-grow overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6 bg-gray-50/50">
                 {carrito.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-gray-400">
                     <ShoppingCart className="w-16 h-16 mb-4 opacity-30" />
@@ -601,40 +736,41 @@ function Tienda() {
                   </div>
                 ) : (
                   carrito.map(item => (
-                    <div key={item.id} className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                    <div key={item.id} className="flex justify-between items-center bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-gray-100">
                       
-                      <div className="flex-1 pr-4">
-                        <h4 className="font-bold text-gray-800 leading-tight mb-3">{item.nombre}</h4>
+                      {/* min-w-0 es CLAVE acá para que el texto largo no empuje el precio hacia afuera */}
+                      <div className="flex-1 pr-2 sm:pr-4 min-w-0">
+                        <h4 className="font-bold text-gray-800 text-sm sm:text-base leading-tight mb-2 sm:mb-3 line-clamp-2" title={item.nombre}>{item.nombre}</h4>
                         
-                        <div className="flex items-center gap-4">
-                          <div className="flex items-center border border-gray-200 rounded-xl shadow-sm bg-white overflow-hidden">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+                          <div className="flex items-center border border-gray-200 rounded-xl shadow-sm bg-white overflow-hidden shrink-0">
                             <button 
                               onClick={() => cambiarCantidad(item.id, 'restar')}
                               disabled={item.cantidad <= 1}
-                              className="p-2.5 text-gray-500 hover:bg-gray-50 disabled:opacity-30 cursor-pointer transition-colors"
+                              className="p-2 sm:p-2.5 text-gray-500 hover:bg-gray-50 disabled:opacity-30 cursor-pointer transition-colors"
                             >
                               <Minus className="w-3.5 h-3.5" />
                             </button>
-                            <span className="w-8 text-center font-bold text-blue-700 text-sm">
+                            <span className="w-6 sm:w-8 text-center font-bold text-blue-700 text-sm">
                               {item.cantidad}
                             </span>
                             <button 
                               onClick={() => cambiarCantidad(item.id, 'sumar')}
-                              // EXCEPCIÓN CARRITO: El botón + no se desactiva si es por encargue
                               disabled={!item.por_encargue && item.cantidad >= item.stock}
-                              className="p-2.5 text-gray-500 hover:bg-gray-50 disabled:opacity-30 cursor-pointer transition-colors border-l border-gray-200"
+                              className="p-2 sm:p-2.5 text-gray-500 hover:bg-gray-50 disabled:opacity-30 cursor-pointer transition-colors border-l border-gray-200"
                             >
                               <Plus className="w-3.5 h-3.5" />
                             </button>
                           </div>
-                          <span className="text-sm text-gray-500 font-medium tracking-wide">x ${item.precio.toLocaleString('es-AR')}</span>
+                          <span className="text-xs sm:text-sm text-gray-500 font-medium tracking-wide whitespace-nowrap shrink-0">x ${item.precio.toLocaleString('es-AR')}</span>
                         </div>
                       </div>
 
-                      <div className="flex flex-col items-end border-l border-gray-100 pl-4">
-                        <span className="font-black text-emerald-600 mb-4 text-lg">${(item.precio * item.cantidad).toLocaleString('es-AR')}</span>
-                        <button onClick={() => quitarDelCarrito(item.id)} className="text-gray-400 hover:text-red-500 transition-colors p-2 rounded-full hover:bg-red-50 cursor-pointer" title="Quitar">
-                          <Trash2 className="w-5 h-5" />
+                      {/* shrink-0 protege esta columna para que nunca se achique ni se corte */}
+                      <div className="flex flex-col items-end border-l border-gray-100 pl-2 sm:pl-4 shrink-0">
+                        <span className="font-black text-emerald-600 mb-3 sm:mb-4 text-base sm:text-lg whitespace-nowrap">${(item.precio * item.cantidad).toLocaleString('es-AR')}</span>
+                        <button onClick={() => quitarDelCarrito(item.id)} className="text-gray-400 hover:text-red-500 transition-colors p-1.5 sm:p-2 rounded-full hover:bg-red-50 cursor-pointer" title="Quitar">
+                          <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                         </button>
                       </div>
 
@@ -644,16 +780,16 @@ function Tienda() {
               </div>
 
               {carrito.length > 0 && (
-                <div className="p-6 bg-white border-t border-gray-100 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]">
-                  <div className="flex justify-between items-center mb-6">
-                    <span className="text-lg font-bold text-gray-500 uppercase tracking-widest text-sm">Total a pagar</span>
-                    <span className="text-3xl font-black text-emerald-600 tracking-tight">${calcularTotal().toLocaleString('es-AR')}</span>
+                <div className="p-4 sm:p-6 bg-white border-t border-gray-100 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]">
+                  <div className="flex justify-between items-center mb-4 sm:mb-6 gap-2">
+                    <span className="font-bold text-gray-500 uppercase tracking-widest text-xs sm:text-sm">Total a pagar</span>
+                    <span className="text-2xl sm:text-3xl font-black text-emerald-600 tracking-tight whitespace-nowrap">${calcularTotal().toLocaleString('es-AR')}</span>
                   </div>
                   <button 
                     onClick={pedirCarritoPorWhatsApp}
-                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-2xl shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-lg flex justify-center items-center gap-3 cursor-pointer"
+                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3.5 sm:py-4 rounded-2xl shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-base sm:text-lg flex justify-center items-center gap-3 cursor-pointer"
                   >
-                    <MessageCircle className="w-6 h-6" />
+                    <MessageCircle className="w-5 h-5 sm:w-6 sm:h-6" />
                     Confirmar por WhatsApp
                   </button>
                 </div>
