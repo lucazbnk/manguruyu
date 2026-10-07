@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
-import { Search, ShoppingCart, MessageCircle, ChevronDown, Filter, Plus, Minus, Trash2, X, PackageOpen, CameraOff, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, ShoppingCart, MessageCircle, ChevronDown, Filter, Plus, Minus, Trash2, X, PackageOpen, CameraOff, AlertCircle, ChevronLeft, ChevronRight, ArrowDownUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const InstagramIcon = ({ className }) => (
@@ -29,8 +29,8 @@ function Tienda() {
   const [categoriaActiva, setCategoriaActiva] = useState("");
   const [subcategoriaActiva, setSubcategoriaActiva] = useState("");
   const [busqueda, setBusqueda] = useState(""); 
-
-  const [menuCategoriasAbierto, setMenuCategoriasAbierto] = useState(false);
+  
+  const [ordenActivo, setOrdenActivo] = useState("relevancia");
 
   const [carrito, setCarrito] = useState([]);
   const [mostrarCarrito, setMostrarCarrito] = useState(false);
@@ -40,12 +40,13 @@ function Tienda() {
   const [productoModal, setProductoModal] = useState(null);
   
   const [indiceFotoActual, setIndiceFotoActual] = useState(0);
-
-  // NUEVO: Lógica para el carrusel de imágenes desde la tarjeta principal
   const [indicesCarrusel, setIndicesCarrusel] = useState({});
-  
+  const [destacados, setDestacados] = useState([]);
+
+  const numeroWhatsApp = "5493435300833"; 
+
   const avanzarFotoCarrusel = (e, id, max) => {
-    e.stopPropagation(); // Evita que se abra el modal al tocar la flecha
+    e.stopPropagation();
     setIndicesCarrusel(prev => ({ ...prev, [id]: prev[id] !== undefined ? (prev[id] === max - 1 ? 0 : prev[id] + 1) : 1 }));
   };
   
@@ -54,16 +55,12 @@ function Tienda() {
     setIndicesCarrusel(prev => ({ ...prev, [id]: prev[id] !== undefined ? (prev[id] === 0 ? max - 1 : prev[id] - 1) : max - 1 }));
   };
 
-  const [destacados, setDestacados] = useState([]);
-
-  // NUEVO: Lógica para Productos Destacados (Al azar o Elegidos)
   useEffect(() => {
     if (productos.length > 0) {
-      // Si a futuro creas una columna 'destacado' en Supabase, usa esos.
-      // Si no existe, mezcla el catálogo y elige 6 al azar.
       const elegidos = productos.filter(p => p.destacado);
       if (elegidos.length > 0) {
-        setDestacados(elegidos);
+        const elegidosMezclados = [...elegidos].sort(() => 0.5 - Math.random());
+        setDestacados(elegidosMezclados);
       } else {
         const mezclados = [...productos].sort(() => 0.5 - Math.random());
         setDestacados(mezclados.slice(0, 6));
@@ -71,25 +68,45 @@ function Tienda() {
     }
   }, [productos]);
 
-  // NUEVO: Movimiento automático del carrusel de destacados
   useEffect(() => {
     if (destacados.length === 0) return;
     const timer = setInterval(() => {
       const carrusel = document.getElementById('carrusel-destacados');
       if (carrusel) {
         const anchoTarjeta = carrusel.firstChild ? carrusel.firstChild.offsetWidth + 16 : 300;
-        // Si llegó al final, vuelve al principio, sino avanza
         if (carrusel.scrollLeft + carrusel.clientWidth >= carrusel.scrollWidth - 10) {
           carrusel.scrollTo({ left: 0, behavior: 'smooth' });
         } else {
           carrusel.scrollBy({ left: anchoTarjeta, behavior: 'smooth' });
         }
       }
-    }, 3500); // Cambia de producto cada 3 segundos y medio
+    }, 3500); 
     return () => clearInterval(timer);
   }, [destacados]);
-  
-  const numeroWhatsApp = "5493435300833"; 
+
+  useEffect(() => {
+    const parametros = new URLSearchParams(window.location.search);
+    const catUrl = parametros.get('cat');
+    const subUrl = parametros.get('sub');
+    
+    if (catUrl) setCategoriaActiva(catUrl);
+    if (subUrl) setSubcategoriaActiva(subUrl);
+  }, []);
+
+  useEffect(() => {
+    const parametros = new URLSearchParams(window.location.search);
+    
+    if (categoriaActiva) parametros.set('cat', categoriaActiva);
+    else parametros.delete('cat');
+    
+    if (subcategoriaActiva) parametros.set('sub', subcategoriaActiva);
+    else parametros.delete('sub');
+    
+    const nuevoTexto = parametros.toString();
+    const nuevaUrl = window.location.pathname + (nuevoTexto ? '?' + nuevoTexto : '');
+    
+    window.history.replaceState({}, '', nuevaUrl);
+  }, [categoriaActiva, subcategoriaActiva]);
 
   useEffect(() => {
     const cargarTodo = async () => {
@@ -125,15 +142,12 @@ function Tienda() {
 
   const mostrarToast = (mensaje) => {
     setToast(mensaje);
-    setTimeout(() => {
-      setToast("");
-    }, 3000);
+    setTimeout(() => { setToast(""); }, 3000);
   };
 
   const agregarAlCarrito = (prod) => {
     const itemExistente = carrito.find(item => item.id === prod.id);
     if (itemExistente) {
-      // EXCEPCIÓN: Si es por encargue o si todavía no llegaste al límite de stock físico
       if (prod.por_encargue || itemExistente.cantidad < prod.stock) {
         setCarrito(carrito.map(item => item.id === prod.id ? { ...item, cantidad: item.cantidad + 1 } : item));
       } else {
@@ -148,7 +162,6 @@ function Tienda() {
   const cambiarCantidad = (id, operacion) => {
     setCarrito(carrito.map(item => {
       if (item.id === id) {
-        // EXCEPCIÓN: Si es sumar y (es por encargue O hay stock)
         if (operacion === 'sumar' && (item.por_encargue || item.cantidad < item.stock)) {
           return { ...item, cantidad: item.cantidad + 1 };
         } else if (operacion === 'sumar' && (!item.por_encargue && item.cantidad >= item.stock)) {
@@ -204,9 +217,7 @@ function Tienda() {
         try {
             const parseado = JSON.parse(imagen_url);
             if (Array.isArray(parseado)) return parseado;
-        } catch (e) {
-            return [imagen_url];
-        }
+        } catch (e) { return [imagen_url]; }
     }
     return [imagen_url]; 
   };
@@ -236,13 +247,9 @@ function Tienda() {
   };
 
   const productosFiltrados = productos.filter(p => {
-    // 1. Juntamos la subcategoría principal y TODAS las extras en una sola bolsita
     const todasSusSubcats = [p.subcategoria_id, ...(p.subcategorias_extra || [])];
-    
-    // 2. Revisamos a qué categorías padre pertenecen (ej: si pertenece a Reeles, sacamos que su padre es Pesca)
     const todasSusCatsPadre = todasSusSubcats.map(subId => obtenerIdCategoria(subId));
 
-    // 3. El producto pasa el filtro si coincide con la principal O con alguna de las extras
     const pasaCategoria = categoriaActiva === "" || todasSusCatsPadre.some(catId => String(catId) === String(categoriaActiva));
     const pasaSubcategoria = subcategoriaActiva === "" || todasSusSubcats.some(subId => String(subId) === String(subcategoriaActiva));
     
@@ -254,38 +261,49 @@ function Tienda() {
     return pasaCategoria && pasaSubcategoria && pasaBusqueda;
   });
 
+  const productosOrdenados = [...productosFiltrados].sort((a, b) => {
+    if (ordenActivo === "menor_precio") return a.precio - b.precio;
+    if (ordenActivo === "mayor_precio") return b.precio - a.precio;
+    if (ordenActivo === "relevancia") {
+      const aDisponible = (a.stock > 0 || a.por_encargue) ? 1 : 0;
+      const bDisponible = (b.stock > 0 || b.por_encargue) ? 1 : 0;
+      return bDisponible - aDisponible; 
+    }
+    return 0;
+  });
+
   return (
-    <div className="min-h-screen bg-[#F8FAFC] relative flex flex-col justify-between font-sans text-gray-800 overflow-x-hidden">
+    <div className="min-h-screen bg-[#F8FAFC] relative flex flex-col justify-between font-sans text-gray-800">
       
       <div>
         <header className="bg-blue-900 text-white shadow-lg sticky top-0 z-30 transition-all duration-300">
-          <div className="max-w-7xl mx-auto p-4 flex flex-wrap md:flex-nowrap justify-between items-center gap-4">
+          <div className="max-w-7xl mx-auto p-2 sm:p-4 flex items-center justify-between gap-2 sm:gap-4">
             
-            <div className="flex items-center gap-3 order-1 cursor-pointer group" onClick={() => {setCategoriaActiva(""); setSubcategoriaActiva(""); setBusqueda("");}}>
+            <div className="flex items-center shrink-0 cursor-pointer group" onClick={() => {setCategoriaActiva(""); setSubcategoriaActiva(""); setBusqueda("");}}>
               <img src="/logo.png" alt="Logo Manguruyu" className="w-10 h-10 md:w-12 md:h-12 object-contain bg-white rounded-full p-1 shadow-sm group-hover:scale-105 transition-transform duration-300" />
-              <h1 className="text-xl md:text-2xl font-black tracking-wider uppercase hidden sm:block">El Manguruyu</h1>
+              <h1 className="text-xl md:text-2xl font-black tracking-wider uppercase hidden lg:block ml-3">El Manguruyu</h1>
             </div>
 
-            <div className="w-full md:w-auto md:flex-1 order-3 md:order-2 relative group">
+            <div className="flex-1 relative group max-w-2xl">
               <input 
                 type="text" 
-                placeholder="Buscar productos (ej: Reel, Shimano...)"
+                placeholder="Buscar..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                className="w-full border border-transparent p-3 pl-12 rounded-full shadow-inner focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-400/20 transition-all duration-300 bg-white text-gray-700"
+                className="w-full border border-transparent p-2 sm:p-3 pl-9 sm:pl-12 rounded-full shadow-inner focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-400/20 transition-all duration-300 bg-white text-gray-700 text-sm sm:text-base"
               />
-              <Search className="absolute left-4 top-3.5 w-5 h-5 text-gray-400 group-focus-within:text-blue-500 transition-colors duration-300" />
+              <Search className="absolute left-3 sm:left-4 top-2.5 sm:top-3.5 w-4 h-4 sm:w-5 sm:h-5 text-gray-400 group-focus-within:text-blue-500 transition-colors duration-300" />
             </div>
 
-            <div className="order-2 md:order-3">
+            <div className="shrink-0">
               <button 
                 onClick={() => setMostrarCarrito(true)} 
-                className="relative bg-white/10 backdrop-blur-md px-5 py-2.5 rounded-full hover:bg-white/20 transition-all duration-300 flex items-center gap-2 font-semibold cursor-pointer border border-white/20 hover:shadow-lg hover:-translate-y-0.5"
+                className="relative bg-white/10 backdrop-blur-md p-2.5 sm:px-5 sm:py-2.5 rounded-full hover:bg-white/20 transition-all duration-300 flex items-center gap-2 font-semibold cursor-pointer border border-white/20 hover:shadow-lg hover:-translate-y-0.5"
               >
-                <ShoppingCart className="w-5 h-5" />
+                <ShoppingCart className="w-5 h-5 sm:w-5 sm:h-5" />
                 <span className="hidden sm:inline">Carrito</span>
                 {cantidadItems > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full shadow-md border-2 border-blue-900 animate-pulse">
+                  <span className="absolute -top-1.5 -right-1.5 sm:-top-2 sm:-right-2 bg-red-500 text-white text-[10px] sm:text-xs font-bold w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center rounded-full shadow-md border-2 border-blue-900 animate-pulse">
                     {cantidadItems}
                   </span>
                 )}
@@ -317,9 +335,6 @@ function Tienda() {
             </div>
           </motion.div>
 
-          {/* ======================================================== */}
-          {/* 1. SECCIÓN COLECCIONES (Banners) - AHORA VAN ARRIBA */}
-          {/* ======================================================== */}
           {colecciones.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-16">
               {colecciones.map((col, index) => (
@@ -351,9 +366,6 @@ function Tienda() {
             </div>
           )}
 
-          {/* ======================================================== */}
-          {/* 2. SECCIÓN DESTACADOS (Sin estrella y debajo de banners) */}
-          {/* ======================================================== */}
           {destacados.length > 0 && (
             <div className="mb-12 sm:mb-16">
               <div className="flex items-center mb-6 px-2">
@@ -362,7 +374,7 @@ function Tienda() {
               
               <div 
                 id="carrusel-destacados"
-                className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-6 pt-2 px-2"
+                className="flex gap-4 overflow-x-auto pb-6 pt-2 px-2"
                 style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
               >
                 <style>{`#carrusel-destacados::-webkit-scrollbar { display: none; }`}</style>
@@ -372,7 +384,7 @@ function Tienda() {
                   return (
                     <div 
                       key={`dest-${prod.id}`}
-                      className="min-w-[260px] max-w-[260px] sm:min-w-[300px] sm:max-w-[300px] snap-center shrink-0 bg-white rounded-2xl sm:rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col border border-gray-100 group cursor-pointer"
+                      className="min-w-[260px] max-w-[260px] sm:min-w-[300px] sm:max-w-[300px] shrink-0 bg-white rounded-2xl sm:rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col border border-gray-100 group cursor-pointer"
                       onClick={() => abrirModalProducto(prod)}
                     >
                       <div className="h-40 sm:h-48 bg-gray-50 relative p-4 flex items-center justify-center overflow-hidden">
@@ -412,74 +424,90 @@ function Tienda() {
             </div>
           )}
 
-          <div id="seccion-productos" className="relative flex justify-center mb-6 z-20 pt-4">
-            <button 
-              onClick={() => setMenuCategoriasAbierto(!menuCategoriasAbierto)}
-              className="flex items-center gap-3 px-6 sm:px-8 py-2.5 sm:py-3 bg-white border border-gray-200 rounded-full shadow-sm hover:shadow-md hover:border-blue-300 text-gray-700 font-semibold transition-all duration-300 text-sm sm:text-base cursor-pointer group"
-            >
-              <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500 group-hover:scale-110 transition-transform" />
-              <span>{categoriaActiva === "" ? "Todas las Categorías" : obtenerNombreCategoriaActiva()}</span>
-              <ChevronDown className={`w-4 h-4 sm:w-5 sm:h-5 text-gray-400 transition-transform duration-300 ${menuCategoriasAbierto ? 'rotate-180' : ''}`} />
-            </button>
+          {/* ======================================================== */}
+          {/* PANEL DE FILTROS: DESPLEGABLES CON TÍTULOS */}
+          {/* ======================================================== */}
+          <div id="seccion-productos" className="relative flex flex-col md:flex-row gap-4 mb-10 z-20 pt-4 px-2 sm:px-4 max-w-5xl mx-auto w-full">
+            
+            {/* 1. Desplegable de Categorías */}
+            <div className="flex-1 relative">
+              <span className="block text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1 text-left">
+                Categorías
+              </span>
+              <div className="flex items-center bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300 px-4 py-3 w-full group cursor-pointer">
+                <Filter className="w-5 h-5 text-blue-500 mr-2 group-hover:scale-110 transition-transform shrink-0" />
+                <select 
+                  value={categoriaActiva} 
+                  onChange={(e) => {
+                    setCategoriaActiva(e.target.value);
+                    setSubcategoriaActiva(""); // Borra la subcategoría si cambias la categoría padre
+                  }}
+                  className="bg-transparent text-gray-700 font-semibold text-sm sm:text-base focus:outline-none cursor-pointer appearance-none w-full pr-6"
+                >
+                  <option value="">Todas las Categorías</option>
+                  {categorias.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.nombre}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-4 w-5 h-5 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
 
+            {/* 2. Desplegable de Subcategorías (Aparece solo si elegiste una Categoría) */}
             <AnimatePresence>
-              {menuCategoriasAbierto && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setMenuCategoriasAbierto(false)}></div>
-                  <motion.div 
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
-                    className="absolute top-full mt-3 w-64 bg-white border border-gray-100 rounded-2xl shadow-xl z-20 overflow-hidden divide-y divide-gray-50"
-                  >
-                    <button 
-                      onClick={() => { setCategoriaActiva(""); setSubcategoriaActiva(""); setMenuCategoriasAbierto(false); }} 
-                      className={`w-full text-left px-5 py-3.5 text-sm sm:text-base transition-colors cursor-pointer ${categoriaActiva === "" ? "font-bold text-blue-600 bg-blue-50/50" : "text-gray-600 hover:bg-gray-50 hover:text-blue-500"}`}
+              {categoriaActiva !== "" && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.95 }} 
+                  animate={{ opacity: 1, scale: 1 }} 
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="flex-1 relative"
+                >
+                  <span className="block text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1 text-left line-clamp-1">
+                    Subcategorías de {obtenerNombreCategoriaActiva()}
+                  </span>
+                  <div className="flex items-center bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300 px-4 py-3 w-full group cursor-pointer">
+                    <Filter className="w-5 h-5 text-blue-400 mr-2 group-hover:scale-110 transition-transform shrink-0" />
+                    <select 
+                      value={subcategoriaActiva} 
+                      onChange={(e) => setSubcategoriaActiva(e.target.value)}
+                      className="bg-transparent text-gray-700 font-semibold text-sm sm:text-base focus:outline-none cursor-pointer appearance-none w-full pr-6"
                     >
-                      Todas las Categorías
-                    </button>
-                    {categorias.map(cat => (
-                      <button 
-                        key={cat.id} 
-                        onClick={() => { setCategoriaActiva(cat.id); setSubcategoriaActiva(""); setMenuCategoriasAbierto(false); }} 
-                        className={`w-full text-left px-5 py-3.5 text-sm sm:text-base transition-colors cursor-pointer ${String(categoriaActiva) === String(cat.id) ? "font-bold text-blue-600 bg-blue-50/50" : "text-gray-600 hover:bg-gray-50 hover:text-blue-500"}`}
-                      >
-                        {cat.nombre}
-                      </button>
-                    ))}
-                  </motion.div>
-                </>
+                      <option value="">Todo en {obtenerNombreCategoriaActiva()}</option>
+                      {subcategorias.filter(sub => String(sub.categoria_id) === String(categoriaActiva)).map(sub => (
+                        <option key={sub.id} value={sub.id}>{sub.nombre}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-4 w-5 h-5 text-gray-400 pointer-events-none" />
+                  </div>
+                </motion.div>
               )}
             </AnimatePresence>
+
+            {/* 3. Desplegable de Ordenamiento */}
+            <div className="flex-1 relative">
+              <span className="block text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1 text-left">
+                Ordenar por
+              </span>
+              <div className="flex items-center bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300 px-4 py-3 w-full group cursor-pointer">
+                <ArrowDownUp className="w-5 h-5 text-blue-500 mr-2 group-hover:scale-110 transition-transform shrink-0" />
+                <select 
+                  value={ordenActivo} 
+                  onChange={(e) => setOrdenActivo(e.target.value)}
+                  className="bg-transparent text-gray-700 font-semibold text-sm sm:text-base focus:outline-none cursor-pointer appearance-none w-full pr-6"
+                >
+                  <option value="relevancia">Relevancia</option>
+                  <option value="menor_precio">Menor Precio</option>
+                  <option value="mayor_precio">Mayor Precio</option>
+                </select>
+                <ChevronDown className="absolute right-4 w-5 h-5 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+
           </div>
 
-          {categoriaActiva !== "" && (
-            <motion.div 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} 
-              className="flex flex-wrap gap-2 mb-10 justify-center relative z-10"
-            >
-              <button 
-                onClick={() => setSubcategoriaActiva("")} 
-                className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-300 cursor-pointer ${subcategoriaActiva === "" ? 'bg-blue-100 text-blue-800 shadow-sm border border-blue-200 sm:scale-105' : 'bg-transparent text-gray-500 hover:bg-gray-100 border border-transparent'}`}
-              >
-                Todo en {obtenerNombreCategoriaActiva()}
-              </button>
-              
-              {subcategorias.filter(sub => String(sub.categoria_id) === String(categoriaActiva)).map(sub => (
-                <button 
-                  key={sub.id} 
-                  onClick={() => setSubcategoriaActiva(sub.id)} 
-                  className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-300 cursor-pointer ${String(subcategoriaActiva) === String(sub.id) ? 'bg-blue-100 text-blue-800 shadow-sm border border-blue-200 sm:scale-105' : 'bg-transparent text-gray-500 hover:bg-gray-100 border border-transparent'}`}
-                >
-                  {sub.nombre}
-                </button>
-              ))}
-            </motion.div>
-          )}
-
-          {categoriaActiva === "" && <div className="mb-10"></div>}
-
+          {/* ======================================================== */}
+          {/* GRILLA DE PRODUCTOS */}
+          {/* ======================================================== */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-8 relative z-0">
             
             {cargando ? (
@@ -503,15 +531,15 @@ function Tienda() {
                   </div>
                 </div>
               ))
-            ) : productosFiltrados.length === 0 ? (
+            ) : productosOrdenados.length === 0 ? (
               <div className="col-span-full flex flex-col items-center justify-center py-24 bg-white rounded-3xl shadow-sm border border-gray-100 text-gray-400">
                 <PackageOpen className="w-16 h-16 mb-4 text-gray-300 opacity-80" />
                 <span className="text-lg font-medium text-center px-4">{busqueda !== "" ? `No encontramos nada para "${busqueda}".` : "No hay productos disponibles por el momento."}</span>
               </div>
             ) : (
-              productosFiltrados.map((prod, index) => {
+              productosOrdenados.map((prod, index) => {
                 const listaFotos = obtenerListaImagenes(prod.imagen_url);
-                const idxFoto = indicesCarrusel[prod.id] || 0; // NUEVO: Averigua qué foto le toca mostrar a este producto
+                const idxFoto = indicesCarrusel[prod.id] || 0; 
                 
                 return (
                 <motion.div 
@@ -529,7 +557,6 @@ function Tienda() {
                       <>
                         <img src={listaFotos[idxFoto]} alt={prod.nombre} className="max-w-full max-h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-700 ease-out" />
                         
-                        {/* MAGIA: Flechitas y puntitos (Discretas en celu, tamaño normal en PC) */}
                         {listaFotos.length > 1 && (
                           <>
                             <div className="absolute inset-0 flex items-center justify-between px-0.5 sm:px-2 opacity-100 sm:opacity-0 sm:group-hover/img:opacity-100 transition-opacity duration-300">
@@ -569,7 +596,6 @@ function Tienda() {
                       <span className="text-base sm:text-xl font-bold text-emerald-600 tracking-tight">${prod.precio.toLocaleString('es-AR')}</span>
                       <button 
                         onClick={(e) => { e.stopPropagation(); agregarAlCarrito(prod); }}
-                        // EXCEPCIÓN BOTÓN: Se desactiva solo si NO hay stock Y NO es por encargue
                         disabled={prod.stock <= 0 && !prod.por_encargue}
                         className={`p-2.5 sm:p-3 rounded-xl sm:rounded-2xl font-bold transition-all duration-300 flex items-center justify-center cursor-pointer ${prod.stock > 0 || prod.por_encargue ? 'bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white hover:shadow-md sm:hover:scale-105' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
                         title="Agregar al carrito"
@@ -584,6 +610,18 @@ function Tienda() {
           </div>
         </main>
       </div>
+
+      <button 
+        onClick={() => setMostrarCarrito(true)}
+        className="sm:hidden fixed bottom-6 right-6 bg-blue-600 text-white p-4 rounded-full shadow-2xl z-40 active:scale-95 transition-transform border border-white/20"
+      >
+        <ShoppingCart className="w-6 h-6" />
+        {cantidadItems > 0 && (
+          <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[11px] font-black w-6 h-6 flex items-center justify-center rounded-full shadow-md border-2 border-white animate-pulse">
+            {cantidadItems}
+          </span>
+        )}
+      </button>
 
       <footer className="bg-blue-950 text-white py-12 mt-20 border-t border-blue-900 relative z-10">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-8 text-center md:text-left">
@@ -681,14 +719,12 @@ function Tienda() {
                 <div className="border-t border-gray-100 pt-6 mt-auto">
                   <div className="flex items-center justify-between mb-6">
                     <span className="text-3xl sm:text-4xl font-black text-emerald-600 tracking-tight">${productoModal.precio.toLocaleString('es-AR')}</span>
-                    {/* EXCEPCIÓN MODAL CARTEL: Se oculta si es por encargue */}
                     {productoModal.stock <= 0 && !productoModal.por_encargue && (
                        <span className="bg-red-100 text-red-600 font-bold px-3 py-1.5 rounded-full text-sm">Sin stock</span>
                     )}
                   </div>
                   <button 
                     onClick={() => { agregarAlCarrito(productoModal); setProductoModal(null); }}
-                    // EXCEPCIÓN MODAL BOTÓN: Solo se bloquea si NO hay stock Y NO es por encargue
                     disabled={productoModal.stock <= 0 && !productoModal.por_encargue}
                     className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all cursor-pointer ${productoModal.stock > 0 || productoModal.por_encargue ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-xl hover:-translate-y-1' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                   >
@@ -738,7 +774,6 @@ function Tienda() {
                   carrito.map(item => (
                     <div key={item.id} className="flex justify-between items-center bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-gray-100">
                       
-                      {/* min-w-0 es CLAVE acá para que el texto largo no empuje el precio hacia afuera */}
                       <div className="flex-1 pr-2 sm:pr-4 min-w-0">
                         <h4 className="font-bold text-gray-800 text-sm sm:text-base leading-tight mb-2 sm:mb-3 line-clamp-2" title={item.nombre}>{item.nombre}</h4>
                         
@@ -766,7 +801,6 @@ function Tienda() {
                         </div>
                       </div>
 
-                      {/* shrink-0 protege esta columna para que nunca se achique ni se corte */}
                       <div className="flex flex-col items-end border-l border-gray-100 pl-2 sm:pl-4 shrink-0">
                         <span className="font-black text-emerald-600 mb-3 sm:mb-4 text-base sm:text-lg whitespace-nowrap">${(item.precio * item.cantidad).toLocaleString('es-AR')}</span>
                         <button onClick={() => quitarDelCarrito(item.id)} className="text-gray-400 hover:text-red-500 transition-colors p-1.5 sm:p-2 rounded-full hover:bg-red-50 cursor-pointer" title="Quitar">
