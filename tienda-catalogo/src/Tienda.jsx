@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import { Search, ShoppingCart, MessageCircle, ChevronDown, Filter, Plus, Minus, Trash2, X, PackageOpen, AlertCircle, ChevronLeft, ChevronRight, ArrowDownUp, CameraOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import ProductCard from './components/ProductCard'; // Asegurate que la ruta esté bien
+import ProductCard from './components/ProductCard'; 
 
 const InstagramIcon = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
@@ -14,7 +14,6 @@ function Tienda() {
   const [subcategorias, setSubcategorias] = useState([]);
   const [colecciones, setColecciones] = useState([]);
   
-  // NUEVO ESTADO: Guardamos las variantes acá
   const [variantes, setVariantes] = useState([]);
   const [varianteSeleccionadaModal, setVarianteSeleccionadaModal] = useState(null);
 
@@ -36,7 +35,6 @@ function Tienda() {
 
   const numeroWhatsApp = "5493435300833"; 
 
-  // Generar Destacados Aleatorios
   useEffect(() => {
     if (productos.length > 0) {
       const elegidos = productos.filter(p => p.destacado);
@@ -50,7 +48,6 @@ function Tienda() {
     }
   }, [productos]);
 
-  // Autoscroll Carrusel
   useEffect(() => {
     if (destacados.length === 0) return;
     const timer = setInterval(() => {
@@ -67,7 +64,6 @@ function Tienda() {
     return () => clearInterval(timer);
   }, [destacados]);
 
-  // Sincronización URL
   useEffect(() => {
     const parametros = new URLSearchParams(window.location.search);
     const catUrl = parametros.get('cat');
@@ -87,7 +83,6 @@ function Tienda() {
     window.history.replaceState({}, '', nuevaUrl);
   }, [categoriaActiva, subcategoriaActiva]);
 
-  // CARGA DE DATOS PRINCIPAL
   useEffect(() => {
     const cargarTodo = async () => {
       setCargando(true);
@@ -96,7 +91,7 @@ function Tienda() {
         obtenerSubcategorias(),
         obtenerProductos(),
         obtenerColecciones(),
-        obtenerVariantes() // Llamada a la nueva tabla
+        obtenerVariantes() 
       ]);
       setTimeout(() => setCargando(false), 600); 
     };
@@ -108,7 +103,6 @@ function Tienda() {
   const obtenerProductos = async () => { const { data } = await supabase.from('productos').select('*').order('id'); if (data) setProductos(data); };
   const obtenerColecciones = async () => { const { data } = await supabase.from('colecciones').select('*').order('id', { ascending: true }); if (data) setColecciones(data); };
   
-  // NUEVO: Obtener todas las variantes de Supabase
   const obtenerVariantes = async () => { 
     const { data } = await supabase.from('variantes').select('*'); 
     if (data) setVariantes(data); 
@@ -116,11 +110,12 @@ function Tienda() {
 
   const mostrarToast = (mensaje) => { setToast(mensaje); setTimeout(() => setToast(""), 3000); };
 
-  // --- LÓGICA DE CARRITO MEJORADA (Maneja IDs Únicos por Variante) ---
   const agregarAlCarrito = (prod, varianteObj = null) => {
-    // Generamos un ID único que junta el producto base con su variante. Ej: "5-var12" o "5"
     const cartItemId = varianteObj ? `${prod.id}-var${varianteObj.id}` : prod.id.toString();
     const stockDisponible = varianteObj ? varianteObj.stock : prod.stock;
+
+    // LÓGICA DE PRECIO: Si la variante tiene precio propio lo usamos, si no usamos el base del producto
+    const precioAplicable = (varianteObj && varianteObj.precio) ? parseFloat(varianteObj.precio) : prod.precio;
 
     const itemExistente = carrito.find(item => item.cartItemId === cartItemId);
 
@@ -134,7 +129,8 @@ function Tienda() {
     } else {
       setCarrito([...carrito, { 
         ...prod, 
-        cartItemId, // Usamos esto en vez del id normal para renderizar
+        precio: precioAplicable, // Guardamos el precio correcto (base o de la variante) en el carrito
+        cartItemId, 
         cantidad: 1, 
         varianteSelec: varianteObj,
         stockAplicable: stockDisponible 
@@ -167,7 +163,6 @@ function Tienda() {
     if (carrito.length === 0) return;
     let texto = "¡Hola El Manguruyu! Quiero hacer el siguiente pedido:%0A%0A";
     carrito.forEach(item => {
-      // Si tiene variante, le sumamos el texto aclaratorio entre paréntesis
       const nombreFinal = item.varianteSelec ? `${item.nombre} (${item.varianteSelec.nombre})` : item.nombre;
       texto += `▪ ${item.cantidad}x *${nombreFinal}* ($${(item.precio * item.cantidad).toLocaleString('es-AR')})%0A`;
     });
@@ -175,11 +170,10 @@ function Tienda() {
     window.open(`https://wa.me/${numeroWhatsApp}?text=${texto}`, '_blank');
   };
 
-  // --- MODAL ---
   const abrirModalProducto = (prod) => {
     setProductoModal(prod);
     setIndiceFotoModal(0);
-    setVarianteSeleccionadaModal(null); // Resetea la opción elegida al abrir
+    setVarianteSeleccionadaModal(null);
   };
 
   const avanzarFotoModal = (imagenes) => setIndiceFotoModal((prev) => (prev === imagenes.length - 1 ? 0 : prev + 1));
@@ -224,8 +218,12 @@ function Tienda() {
     return 0;
   });
 
-  // Filtramos las variantes que pertenecen al producto que está en el Modal abierto
   const variantesDelModalAbierto = productoModal ? variantes.filter(v => String(v.producto_id) === String(productoModal.id)) : [];
+
+  // LÓGICA DE PRECIO DINÁMICO PARA EL MODAL: Si hay variante seleccionada y tiene precio, mostramos ese. Si no, mostramos el base del producto.
+  const precioMostrarModal = varianteSeleccionadaModal && varianteSeleccionadaModal.precio 
+    ? parseFloat(varianteSeleccionadaModal.precio) 
+    : (productoModal ? productoModal.precio : 0);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] relative flex flex-col justify-between font-sans text-gray-800">
@@ -396,7 +394,7 @@ function Tienda() {
         <div className="max-w-7xl mx-auto px-6 text-center text-xs text-slate-500 mt-12 pt-8 border-t border-slate-900/50">© 2026 El Manguruyu. Todos los derechos reservados.</div>
       </footer>
 
-      {/* MODAL DE PRODUCTO (CON SELECTOR DE VARIANTES) */}
+      {/* MODAL DE PRODUCTO (CON SELECTOR DE VARIANTES Y PRECIO DINÁMICO) */}
       <AnimatePresence>
         {productoModal && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-6">
@@ -439,19 +437,27 @@ function Tienda() {
                          className="w-full border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-blue-500/50 outline-none text-sm font-semibold text-slate-700 bg-white"
                        >
                          <option value="" disabled>Seleccioná tu variante...</option>
-                         {variantesDelModalAbierto.map(v => (
-                           <option key={v.id} value={v.id} disabled={v.stock <= 0 && !productoModal.por_encargue}>
-                             {v.nombre} {v.stock <= 0 && !productoModal.por_encargue ? '(Agotado)' : ''}
-                           </option>
-                         ))}
+                         {variantesDelModalAbierto.map(v => {
+                            // Revisamos si la variante tiene un precio particular para mostrarlo en el texto
+                            const tienePrecioPropio = v.precio && parseFloat(v.precio) > 0 && parseFloat(v.precio) !== parseFloat(productoModal.precio);
+                            const textoExtraPrecio = tienePrecioPropio ? ` ($${parseFloat(v.precio).toLocaleString('es-AR')})` : '';
+
+                            return (
+                             <option key={v.id} value={v.id} disabled={v.stock <= 0 && !productoModal.por_encargue}>
+                               {v.nombre}{textoExtraPrecio} {v.stock <= 0 && !productoModal.por_encargue ? '(Agotado)' : ''}
+                             </option>
+                           );
+                         })}
                        </select>
                     </div>
                   )}
 
                   <div className="flex items-center justify-between mb-6">
-                    <span className="text-3xl sm:text-4xl font-black text-emerald-600 tracking-tight">${productoModal.precio.toLocaleString('es-AR')}</span>
+                    {/* PRECIO GIGANTE DINÁMICO */}
+                    <span className="text-3xl sm:text-4xl font-black text-emerald-600 tracking-tight">
+                      ${precioMostrarModal.toLocaleString('es-AR')}
+                    </span>
                     
-                    {/* El cartel de "Sin stock" ahora evalúa también la variante seleccionada */}
                     {(() => {
                       const stockAEvaluar = varianteSeleccionadaModal ? varianteSeleccionadaModal.stock : productoModal.stock;
                       return (stockAEvaluar <= 0 && !productoModal.por_encargue) ? (
@@ -460,7 +466,6 @@ function Tienda() {
                     })()}
                   </div>
 
-                  {/* Lógica del Botón: Se deshabilita si tiene variantes pero no eligió ninguna, o si la que eligió no tiene stock */}
                   {(() => {
                     const faltaElegirVariante = variantesDelModalAbierto.length > 0 && !varianteSeleccionadaModal;
                     const stockAEvaluar = varianteSeleccionadaModal ? varianteSeleccionadaModal.stock : productoModal.stock;
@@ -503,7 +508,6 @@ function Tienda() {
                   carrito.map(item => (
                     <div key={item.cartItemId} className="flex justify-between items-center bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-slate-100">
                       <div className="flex-1 pr-2 sm:pr-4 min-w-0">
-                        {/* Mostramos el nombre de la variante entre paréntesis si existe */}
                         <h4 className="font-bold text-slate-800 text-sm sm:text-base leading-tight mb-2 sm:mb-3 line-clamp-2" title={item.nombre}>
                           {item.nombre} {item.varianteSelec && <span className="text-blue-600">({item.varianteSelec.nombre})</span>}
                         </h4>

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
-import { Search, Filter, Image as ImageIcon, Lock, LayoutTemplate, UploadCloud, Loader2, X, ChevronLeft, ChevronRight, Package, DollarSign, FileText, Plus, Layers } from 'lucide-react';
+import { Search, Filter, Image as ImageIcon, Lock, LayoutTemplate, UploadCloud, Loader2, X, ChevronLeft, ChevronRight, Package, DollarSign, FileText, Plus, Layers, Calculator, ChevronDown } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import imageCompression from 'browser-image-compression';
 
 function Admin() {
   const [categorias, setCategorias] = useState([]);
@@ -26,7 +28,6 @@ function Admin() {
   const [archivosImagenes, setArchivosImagenes] = useState([]);
   const [subiendo, setSubiendo] = useState(false);
 
-  // ESTADOS PARA DRAG & DROP
   const [isDragging, setIsDragging] = useState(false);
 
   const [costoProd, setCostoProd] = useState("");
@@ -35,16 +36,22 @@ function Admin() {
   const [porEncargue, setPorEncargue] = useState(false);
   const [subcategoriasExtra, setSubcategoriasExtra] = useState([]);
 
-  // NUEVO: Estado para las variantes del producto
+  // VARIANTES
   const [variantesProd, setVariantesProd] = useState([]);
   
-  const agregarVariante = () => setVariantesProd([...variantesProd, { nombre: "", stock: "" }]);
+  const agregarVariante = () => setVariantesProd([...variantesProd, { nombre: "", stock: "", precio: "" }]);
   const quitarVariante = (index) => setVariantesProd(variantesProd.filter((_, i) => i !== index));
   const actualizarVariante = (index, campo, valor) => {
     const nuevas = [...variantesProd];
     nuevas[index][campo] = valor;
     setVariantesProd(nuevas);
   };
+
+  // CALCULADORA USD
+  const [mostrarCalculadora, setMostrarCalculadora] = useState(false);
+  const [calcPrecioUsd, setCalcPrecioUsd] = useState("");
+  const [calcEnvioPorcentaje, setCalcEnvioPorcentaje] = useState(10);
+  const [calcCotizacionUsdt, setCalcCotizacionUsdt] = useState(1630);
   
   const agregarSubcatExtra = () => setSubcategoriasExtra([...subcategoriasExtra, ""]);
   const quitarSubcatExtra = (index) => setSubcategoriasExtra(subcategoriasExtra.filter((_, i) => i !== index));
@@ -150,6 +157,7 @@ function Admin() {
     setEditandoProductoId(null);
     setSubcategoriasExtra([]);
     setVariantesProd([]);
+    setCalcPrecioUsd(""); 
   };
 
   const cargarProductoParaEditar = async (prod) => {
@@ -176,10 +184,9 @@ function Admin() {
     setArchivosImagenes([]); 
     setSubcategoriasExtra(prod.subcategorias_extra || []);
 
-    // Cargar variantes asociadas a este producto desde Supabase
     const { data: varsData } = await supabase.from('variantes').select('*').eq('producto_id', prod.id);
     if (varsData) {
-      setVariantesProd(varsData.map(v => ({ id: v.id, nombre: v.nombre, stock: v.stock })));
+      setVariantesProd(varsData.map(v => ({ id: v.id, nombre: v.nombre, stock: v.stock, precio: v.precio || "" })));
     } else {
       setVariantesProd([]);
     }
@@ -215,21 +222,10 @@ function Admin() {
     setArchivosImagenes(nuevas);
   };
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    if (!subiendo) setIsDragging(true);
-  };
-
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
+  const handleDragOver = (e) => { e.preventDefault(); if (!subiendo) setIsDragging(true); };
+  const handleDragLeave = (e) => { e.preventDefault(); setIsDragging(false); };
   const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (subiendo) return;
-
+    e.preventDefault(); setIsDragging(false); if (subiendo) return;
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const archivosValidos = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
       if (archivosValidos.length > 0) {
@@ -252,10 +248,27 @@ function Admin() {
 
       if (archivosImagenes.length > 0) {
         for (const archivo of archivosImagenes) {
-          const extension = archivo.name.split('.').pop();
+          
+          // ======== LÓGICA DE COMPRESIÓN DE IMÁGENES ========
+          let archivoASubir = archivo;
+          try {
+            const opcionesDeCompresion = {
+              maxSizeMB: 0.3,          // Tamaño máximo de 300 KB
+              maxWidthOrHeight: 1200,  // Redimensionar si es más grande que 1200px
+              useWebWorker: true       // Acelera el proceso usando el navegador
+            };
+            // Comprimimos la imagen
+            archivoASubir = await imageCompression(archivo, opcionesDeCompresion);
+            console.log(`Imagen comprimida de ${archivo.size / 1024 / 1024} MB a ${archivoASubir.size / 1024 / 1024} MB`);
+          } catch (errorCompresion) {
+            console.warn("Hubo un error al comprimir, se subirá la imagen original", errorCompresion);
+          }
+          // ===================================================
+
+          const extension = archivoASubir.name.split('.').pop() || 'jpg';
           const nombreUnico = `${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`;
           
-          const { error: errorSubida } = await supabase.storage.from('productos').upload(nombreUnico, archivo);
+          const { error: errorSubida } = await supabase.storage.from('productos').upload(nombreUnico, archivoASubir);
           
           if (errorSubida) {
             alert("Error de Supabase al subir la foto: " + errorSubida.message);
@@ -290,20 +303,17 @@ function Admin() {
         if (data && data.length > 0) productoIdFinal = data[0].id;
       }
 
-      // GESTIÓN DE VARIANTES EN SUPABASE
       if (productoIdFinal) {
-        // Si estamos editando, borramos las variantes anteriores para volver a insertarlas limpias o actualizadas
         if (editandoProductoId) {
           await supabase.from('variantes').delete().eq('producto_id', productoIdFinal);
         }
-
-        // Si hay variantes agregadas, las insertamos
         const variantesValidas = variantesProd.filter(v => v.nombre.trim() !== "");
         if (variantesValidas.length > 0) {
           const payloadVariantes = variantesValidas.map(v => ({
             producto_id: productoIdFinal,
             nombre: v.nombre.trim(),
-            stock: parseInt(v.stock) || 0
+            stock: parseInt(v.stock) || 0,
+            precio: v.precio ? parseFloat(v.precio) : null 
           }));
           const { error: errVars } = await supabase.from('variantes').insert(payloadVariantes);
           if (errVars) alert("El producto se guardó, pero hubo un error al guardar las variantes: " + errVars.message);
@@ -322,9 +332,7 @@ function Admin() {
 
   const eliminarProducto = async (id) => {
     if (window.confirm("¿Estás seguro de que querés borrar este producto y sus variantes?")) {
-      // Primero borramos las variantes que dependen del producto
       await supabase.from('variantes').delete().eq('producto_id', id);
-      // Luego borramos el producto
       await supabase.from('productos').delete().eq('id', id); 
       obtenerProductos();
     }
@@ -369,6 +377,10 @@ function Admin() {
   });
 
   const gananciaCalculada = (parseFloat(precioProd) || 0) - (parseFloat(costoProd) || 0);
+
+  const valorFinalCalculadora = calcPrecioUsd 
+    ? (parseFloat(calcPrecioUsd) * (1 + parseFloat(calcEnvioPorcentaje) / 100)) * parseFloat(calcCotizacionUsdt)
+    : 0;
 
   return (
     <div className="p-4 sm:p-8 bg-slate-50 min-h-screen font-sans">
@@ -441,7 +453,7 @@ function Admin() {
         </div>
       </div>
 
-      {/* 2. FORMULARIO DE PRODUCTO - REDISEÑADO A DOS COLUMNAS CON VARIANTES */}
+      {/* 2. FORMULARIO DE PRODUCTO */}
       <div id="formulario-producto" className={`p-6 rounded-3xl shadow-sm mb-10 scroll-mt-6 border ${editandoProductoId ? 'bg-yellow-50/50 border-yellow-300' : 'bg-white border-slate-200'}`}>
         <div className="flex justify-between items-center mb-6">
            <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
@@ -457,10 +469,8 @@ function Admin() {
           
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
-            {/* --- COLUMNA IZQUIERDA: INFORMACIÓN PÚBLICA & MULTIMEDIA (8 columnas) --- */}
             <div className="lg:col-span-8 flex flex-col gap-6">
               
-              {/* Tarjeta: Datos Básicos */}
               <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-200">
                 <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide mb-4 flex items-center gap-2">
                   <FileText className="w-4 h-4 text-slate-400"/> Información General
@@ -523,11 +533,11 @@ function Admin() {
                 </div>
               </div>
 
-              {/* Tarjeta: Variantes de Producto (Talles, Colores, Medidas) */}
+              {/* Tarjeta: Variantes de Producto */}
               <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-200">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-blue-500"/> Variantes (Talles / Modelos / Tamaños)
+                    <Layers className="w-4 h-4 text-blue-500"/> Variantes (Con precios individuales)
                   </h3>
                   <button type="button" onClick={agregarVariante} disabled={subiendo} className="bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-sm">
                     <Plus className="w-3.5 h-3.5"/> Agregar Variante
@@ -539,32 +549,22 @@ function Admin() {
                 ) : (
                   <div className="space-y-3">
                     {variantesProd.map((v, index) => (
-                      <div key={index} className="flex gap-3 items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                        <div className="flex-1">
-                          <input 
-                            type="text" 
-                            placeholder="Ej: Talle L / Color Negro / 4000" 
-                            value={v.nombre} 
-                            onChange={(e) => actualizarVariante(index, 'nombre', e.target.value)}
-                            disabled={subiendo}
-                            className="border border-slate-200 p-2 rounded-lg w-full text-xs outline-none focus:ring-2 focus:ring-blue-500/50"
-                          />
+                      <div key={index} className="flex flex-wrap md:flex-nowrap gap-3 items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="flex-1 min-w-[150px]">
+                          <input type="text" placeholder="Ej: Anzuelo N°10" value={v.nombre} onChange={(e) => actualizarVariante(index, 'nombre', e.target.value)} disabled={subiendo} className="border border-slate-200 p-2 rounded-lg w-full text-xs outline-none focus:ring-2 focus:ring-blue-500/50" />
                         </div>
-                        <div className="w-28">
-                          <input 
-                            type="number" 
-                            placeholder="Stock" 
-                            value={v.stock} 
-                            onChange={(e) => actualizarVariante(index, 'stock', e.target.value)}
-                            disabled={subiendo}
-                            className="border border-slate-200 p-2 rounded-lg w-full text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/50"
-                          />
+                        <div className="w-24">
+                          <input type="number" placeholder="Stock" value={v.stock} onChange={(e) => actualizarVariante(index, 'stock', e.target.value)} disabled={subiendo} className="border border-slate-200 p-2 rounded-lg w-full text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/50" />
+                        </div>
+                        <div className="w-32">
+                          <input type="number" placeholder="Precio ($)" value={v.precio} onChange={(e) => actualizarVariante(index, 'precio', e.target.value)} disabled={subiendo} className="border border-slate-200 p-2 rounded-lg w-full text-xs font-bold text-emerald-600 outline-none focus:ring-2 focus:ring-blue-500/50" title="Dejar vacío si vale igual que el producto base" />
                         </div>
                         <button type="button" onClick={() => quitarVariante(index)} className="bg-red-50 text-red-500 hover:bg-red-500 hover:text-white p-2 rounded-lg transition-colors cursor-pointer" title="Eliminar variante">
                           <X className="w-4 h-4"/>
                         </button>
                       </div>
                     ))}
+                    <p className="text-[10px] text-slate-400 mt-2">Si dejas el <b>Precio</b> de la variante vacío, cobrará el precio general de venta.</p>
                   </div>
                 )}
               </div>
@@ -660,11 +660,75 @@ function Admin() {
                       <input type="number" value={costoProd} onChange={(e) => setCostoProd(e.target.value)} disabled={subiendo} className="border border-indigo-100 bg-indigo-50/30 p-3 pl-8 rounded-xl w-full text-sm font-semibold text-indigo-700 focus:ring-2 focus:ring-indigo-500/50 outline-none disabled:opacity-50" placeholder="Ej: 5000" />
                     </div>
                   </div>
-                  <div className="pt-3 border-t border-slate-100 flex justify-between items-center">
+                  <div className="pt-3 pb-2 border-t border-slate-100 flex justify-between items-center">
                      <span className="text-xs font-bold text-slate-400 uppercase">Ganancia x Unidad:</span>
                      <span className={`px-3 py-1 rounded-lg text-sm font-black ${gananciaCalculada > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                        ${gananciaCalculada.toLocaleString('es-AR')}
                      </span>
+                  </div>
+
+                  {/* CALCULADORA USD ACORDEÓN */}
+                  <div className="pt-2 border-t border-slate-100">
+                    <button 
+                      type="button" 
+                      onClick={() => setMostrarCalculadora(!mostrarCalculadora)}
+                      className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer transition-colors w-full justify-between"
+                    >
+                      <span className="flex items-center gap-1"><Calculator className="w-3.5 h-3.5"/> Calculadora Importación (USD)</span>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${mostrarCalculadora ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    <AnimatePresence>
+                      {mostrarCalculadora && (
+                        <motion.div 
+                          initial={{ height: 0, opacity: 0 }} 
+                          animate={{ height: "auto", opacity: 1 }} 
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden mt-3"
+                        >
+                          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-3">
+                             <div className="grid grid-cols-2 gap-3">
+                               <div className="col-span-2">
+                                 <label className="block text-[10px] font-bold text-slate-500 uppercase">Costo Original (USD)</label>
+                                 <input type="number" value={calcPrecioUsd} onChange={e=>setCalcPrecioUsd(e.target.value)} className="w-full p-2 mt-1 text-xs border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ej: 50" />
+                               </div>
+                               <div>
+                                 <label className="block text-[10px] font-bold text-slate-500 uppercase">Envío (%)</label>
+                                 <input type="number" value={calcEnvioPorcentaje} onChange={e=>setCalcEnvioPorcentaje(e.target.value)} className="w-full p-2 mt-1 text-xs border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+                               </div>
+                               <div>
+                                 <label className="block text-[10px] font-bold text-slate-500 uppercase">Cotización (USDT)</label>
+                                 <input type="number" value={calcCotizacionUsdt} onChange={e=>setCalcCotizacionUsdt(e.target.value)} className="w-full p-2 mt-1 text-xs border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+                               </div>
+                             </div>
+                             
+                             <div className="pt-2 border-t border-slate-200/60 flex flex-col items-center">
+                                <span className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Precio Final Sugerido (ARS)</span>
+                                <span className="text-xl font-black text-emerald-600">${valorFinalCalculadora.toLocaleString('es-AR', {maximumFractionDigits: 0})}</span>
+                             </div>
+
+                             <div className="flex gap-2 pt-2">
+                               <button 
+                                 type="button" 
+                                 onClick={() => setPrecioProd(Math.round(valorFinalCalculadora))}
+                                 disabled={!calcPrecioUsd}
+                                 className="w-full bg-blue-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
+                               >
+                                 Usar en Venta
+                               </button>
+                               <button 
+                                 type="button" 
+                                 onClick={() => setCostoProd(Math.round(valorFinalCalculadora))}
+                                 disabled={!calcPrecioUsd}
+                                 className="w-full bg-indigo-500 text-white text-xs font-bold py-2 rounded-lg hover:bg-indigo-600 disabled:opacity-50 cursor-pointer"
+                               >
+                                 Usar en Costo
+                               </button>
+                             </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
               </div>
