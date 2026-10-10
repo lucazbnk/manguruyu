@@ -249,21 +249,18 @@ function Admin() {
       if (archivosImagenes.length > 0) {
         for (const archivo of archivosImagenes) {
           
-          // ======== LÓGICA DE COMPRESIÓN DE IMÁGENES ========
           let archivoASubir = archivo;
           try {
             const opcionesDeCompresion = {
-              maxSizeMB: 0.3,          // Tamaño máximo de 300 KB
-              maxWidthOrHeight: 1200,  // Redimensionar si es más grande que 1200px
-              useWebWorker: true       // Acelera el proceso usando el navegador
+              maxSizeMB: 0.3,          
+              maxWidthOrHeight: 1200,  
+              useWebWorker: true       
             };
-            // Comprimimos la imagen
             archivoASubir = await imageCompression(archivo, opcionesDeCompresion);
             console.log(`Imagen comprimida de ${archivo.size / 1024 / 1024} MB a ${archivoASubir.size / 1024 / 1024} MB`);
           } catch (errorCompresion) {
             console.warn("Hubo un error al comprimir, se subirá la imagen original", errorCompresion);
           }
-          // ===================================================
 
           const extension = archivoASubir.name.split('.').pop() || 'jpg';
           const nombreUnico = `${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`;
@@ -582,7 +579,7 @@ function Admin() {
                       {imagenesActuales.map((url, i) => (
                         <div key={i} className="relative w-24 h-24 shrink-0 rounded-xl overflow-hidden border border-slate-200 group bg-white shadow-sm">
                           <img src={url} alt={`foto-${i}`} className="w-full h-full object-cover mix-blend-multiply" />
-                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-1.5">
+                          <div className="absolute inset-0 bg-black/40 flex flex-col justify-between p-1.5 transition-opacity">
                             <button type="button" onClick={() => eliminarImagenActual(i)} className="self-end bg-red-500 hover:bg-red-600 text-white rounded-full p-1 shadow-sm transition-colors cursor-pointer" title="Borrar foto"><X className="w-3 h-3"/></button>
                             <div className="flex justify-between mt-auto">
                               <button type="button" onClick={() => moverImagen(i, -1)} disabled={i === 0} className="bg-white/90 hover:bg-white p-1 rounded-md disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-sm transition-colors"><ChevronLeft className="w-4 h-4 text-slate-800"/></button>
@@ -621,7 +618,7 @@ function Admin() {
                       {archivosImagenes.map((file, i) => (
                         <div key={`new-${i}`} className="relative w-24 h-24 shrink-0 rounded-xl overflow-hidden border border-emerald-200 group bg-white shadow-sm">
                           <img src={URL.createObjectURL(file)} alt={`nueva-${i}`} className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-1.5">
+                          <div className="absolute inset-0 bg-black/40 flex flex-col justify-between p-1.5 transition-opacity">
                             <button type="button" onClick={(e) => { e.preventDefault(); setArchivosImagenes(archivosImagenes.filter((_, index) => index !== i)); }} className="self-end bg-red-500 hover:bg-red-600 text-white rounded-full p-1 shadow-sm transition-colors cursor-pointer"><X className="w-3 h-3"/></button>
                             <div className="flex justify-between mt-auto">
                               <button type="button" onClick={(e) => { e.preventDefault(); moverImagenNueva(i, -1); }} disabled={i === 0} className="bg-white/90 hover:bg-white p-1 rounded-md disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-sm transition-colors"><ChevronLeft className="w-4 h-4 text-slate-800"/></button>
@@ -869,7 +866,8 @@ function Admin() {
                         </span>
                       </td>
                       <td className="p-3">
-                        <div className="flex gap-2 justify-end opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        {/* Aca le saqué el opacity-0 para que se vea siempre */}
+                        <div className="flex gap-2 justify-end opacity-100">
                           <button onClick={() => cargarProductoParaEditar(prod)} className="bg-yellow-50 text-yellow-600 hover:bg-yellow-500 hover:text-white px-3 py-1.5 rounded-lg text-sm font-bold cursor-pointer transition">Editar</button>
                           <button onClick={() => eliminarProducto(prod.id)} className="bg-red-50 text-red-500 hover:bg-red-500 hover:text-white px-3 py-1.5 rounded-lg text-sm font-bold cursor-pointer transition">Borrar</button>
                         </div>
@@ -926,7 +924,8 @@ function Admin() {
                 <div className="absolute inset-0 p-4 flex flex-col justify-between">
                   <span className="text-white font-black text-lg drop-shadow-md">{col.titulo}</span>
                   <span className="text-white/90 text-[10px] font-bold bg-slate-900/60 backdrop-blur-sm px-2 py-1 rounded-md w-fit uppercase tracking-wider">Apunta a: {obtenerNombreCategoria(col.categoria_id)}</span>
-                  <div className="flex gap-2 justify-end mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Aca le saqué el opacity-0 para que se vea siempre */}
+                  <div className="flex gap-2 justify-end mt-2 opacity-100">
                     <button onClick={() => cargarColeccionParaEditar(col)} className="bg-yellow-500 text-slate-900 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-yellow-400 cursor-pointer shadow-sm">Editar</button>
                     <button onClick={() => eliminarColeccion(col.id)} className="bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-400 cursor-pointer shadow-sm">Borrar</button>
                   </div>
